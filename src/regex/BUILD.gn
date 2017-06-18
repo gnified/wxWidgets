@@ -1,0 +1,21 @@
+config("regex_config") {
+  include_dirs = [ "." ]
+}
+
+source_set("regex") {
+  sources = [
+    "regcomp.c",
+    "regerror.c",
+    "regexec.c",
+    "regfree.c",
+  ]
+
+  public_configs = [
+    ":regex_config",
+    "../..:wxwidgets_config",
+  ]
+
+  deps = [
+    "../..:setup",
+  ]
+}

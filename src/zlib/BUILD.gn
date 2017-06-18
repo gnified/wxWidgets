@@ -1,0 +1,32 @@
+config("zlib_config") {
+  include_dirs = [ "." ]
+}
+
+source_set("zlib") {
+  sources = [
+    "adler32.c",
+    "compress.c",
+    "crc32.c",
+    "deflate.c",
+    "gzclose.c",
+    "gzlib.c",
+    "gzread.c",
+    "gzwrite.c",
+    "infback.c",
+    "inffast.c",
+    "inflate.c",
+    "inftrees.c",
+    "trees.c",
+    "uncompr.c",
+    "zutil.c",
+  ]
+
+  public_configs = [
+    ":zlib_config",
+    "../..:wxwidgets_config",
+  ]
+
+  deps = [
+    "../..:setup",
+  ]
+}

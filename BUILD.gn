@@ -1,0 +1,278 @@
+import("//build/config/precompiled_header.gni")
+
+# copy setup file
+copy("copy_setup") {
+  visibility = [ ":*" ]
+  if (is_win) {
+    sources = [
+      "include/wx/msw/setup0.h",
+    ]
+  } else {
+    assert(false, "Platform not supported")
+  }
+
+  outputs = [
+    "$target_out_dir/wx/setup.h",
+  ]
+}
+
+config("setup_config") {
+  visibility = [ ":*" ]
+  include_dirs = [ target_out_dir ]
+}
+
+group("setup") {
+  public_deps = [
+    ":copy_setup",
+  ]
+  public_configs = [ ":setup_config" ]
+}
+
+config("wxwidgets_config") {
+  visibility = [ ":*" ]
+  include_dirs = [ "include" ]
+
+  if (!is_debug) {
+    defines = [ "wxDEBUG_LEVEL=0" ]
+  }
+}
+
+precompiled_header("pch") {
+  precompiled_header = "wx/wxprec.h"
+  precompiled_source = "src/common/dummy.cpp"
+}
+
+config("libs") {
+  visibility = [ ":*" ]
+
+  if (is_win) {
+    libs = [
+      "gdi32.lib",
+      "user32.lib",
+      "comctl32.lib",
+      "comdlg32.lib",
+      "shell32.lib",
+      "ws2_32.lib",
+      "rpcrt4.lib",
+      "winspool.lib",
+      "ole32.lib",
+      "oleaut32.lib",
+      "version.lib",
+    ]
+  }
+}
+
+config("internal") {
+  visibility = [ ":*" ]
+
+  defines = [ "WXBUILDING" ]
+
+  if (is_win) {
+    defines += [ "__WXMSW__" ]
+  }
+}
+
+_sets_needed = [
+  # BASE_SRC
+  "BASE_CMN_SRC",
+  "BASE_WIN32_SRC",
+  "BASE_CMN_HDR",
+
+  # BASE_PLATFORM_HDR
+  "BASE_WIN32_HDR",
+
+  # BASE_AND_GUI_SRC
+  "BASE_AND_GUI_CMN_SRC",
+  "BASE_AND_GUI_WIN32_SRC",
+
+  # LOWLEVEL_SRC
+  "MSW_LOWLEVEL_SRC",
+  "MSW_DESKTOP_LOWLEVEL_SRC",
+
+  # LOWLEVEL_HDR
+  "MSW_LOWLEVEL_HDR",
+  "MSW_DESKTOP_LOWLEVEL_HDR",
+
+  # GUI_SRC
+  "MSW_SRC",
+  "MSW_DESKTOP_SRC",
+
+  # GUI_HDR
+  "MSW_HDR",
+  "MSW_DESKTOP_HDR",
+
+  "GUI_CMN_SRC",
+  "GUI_CMN_HDR",
+
+  # ADVANCED_SRC
+  "ADVANCED_CMN_SRC",
+  "ADVANCED_MSW_SRC",
+  "ADVANCED_MSW_DESKTOP_SRC",
+  "ADVANCED_MSW_NATIVE_SRC",
+
+  # ADVANCED_HDR
+  "ADVANCED_CMN_HDR",
+  "ADVANCED_MSW_HDR",
+  "ADVANCED_MSW_DESKTOP_HDR",
+  "ADVANCED_MSW_NATIVE_HDR",
+]
+
+_files_bkl = rebase_path("build/bakefiles/files.bkl", root_build_dir)
+files = exec_script("build/get_bakefile_list.py",
+                    [ _files_bkl ] + _sets_needed,
+                    "scope",
+                    [ "build/bakefiles/files.bkl" ])
+
+# If part of base, base would end up with a precompiled header for C as well.
+# wxwidgets PCH isn't usable from C though.
+source_set("base_c") {
+  visibility = [ ":*" ]
+
+  sources = [
+    "src/common/extended.c",
+  ]
+
+  configs += [
+    ":internal",
+    ":wxwidgets_config",
+  ]
+
+  deps = [
+    ":setup",
+  ]
+}
+
+static_library("base") {
+  sources = files.BASE_CMN_SRC  # BASE_SRC
+  sources += files.BASE_AND_GUI_CMN_SRC  # BASE_AND_GUI_SRC
+  public = rebase_path(files.BASE_CMN_HDR, ".", "include")
+
+  if (is_win) {
+    sources += files.BASE_WIN32_SRC
+    sources += files.BASE_AND_GUI_WIN32_SRC
+    public += rebase_path(files.BASE_WIN32_HDR, ".", "include")
+
+    # Some code expects all of windows.h to be available
+    configs -= [ "//build/config/win:lean_and_mean" ]
+  }
+
+  sources -= [ "src/common/extended.c" ]
+
+  defines = [ "wxUSE_BASE=1" ]
+
+  configs += [
+    ":internal",
+    ":pch",
+  ]
+
+  public_configs = [
+    ":libs",
+    ":wxwidgets_config",
+  ]
+
+  deps = [
+    ":base_c",
+    ":setup",
+    "src/jpeg",
+    "src/png",
+    "src/regex",
+    "src/tiff",
+    "src/zlib",
+  ]
+}
+
+static_library("core") {
+  sources = files.GUI_CMN_SRC  # BASE_SRC
+  sources += files.BASE_AND_GUI_CMN_SRC  # BASE_AND_GUI_SRC
+  public = rebase_path(files.GUI_CMN_HDR, ".", "include")
+
+  if (is_win) {
+    # LOWLEVEL_SRC
+    sources += files.MSW_LOWLEVEL_SRC
+    sources += files.MSW_DESKTOP_LOWLEVEL_SRC
+
+    # GUI_SRC
+    sources += files.MSW_SRC
+    sources += files.MSW_DESKTOP_SRC
+
+    # LOWLEVEL_HDR
+    public += rebase_path(files.MSW_LOWLEVEL_HDR, ".", "include")
+    public += rebase_path(files.MSW_DESKTOP_LOWLEVEL_HDR, ".", "include")
+
+    # GUI_HDR
+    public += rebase_path(files.MSW_HDR, ".", "include")
+    public += rebase_path(files.MSW_DESKTOP_HDR, ".", "include")
+
+    # Some code expects all of windows.h to be available
+    configs -= [ "//build/config/win:lean_and_mean" ]
+  }
+
+  defines = [ "wxUSE_BASE=0" ]
+
+  configs += [
+    ":internal",
+    ":pch",
+  ]
+
+  public_configs = [
+    ":libs",
+    ":wxwidgets_config",
+  ]
+
+  deps = [
+    ":setup",
+    "src/jpeg",
+    "src/png",
+    "src/regex",
+    "src/tiff",
+    "src/zlib",
+  ]
+}
+
+static_library("advanced") {
+  sources = files.ADVANCED_CMN_SRC
+  public = rebase_path(files.ADVANCED_CMN_HDR, ".", "include")
+
+  if (is_win) {
+    sources += files.ADVANCED_MSW_SRC
+    sources += files.ADVANCED_MSW_DESKTOP_SRC
+    sources += files.ADVANCED_MSW_NATIVE_SRC
+
+    public += rebase_path(files.ADVANCED_MSW_HDR, ".", "include")
+    public += rebase_path(files.ADVANCED_MSW_DESKTOP_HDR, ".", "include")
+    public += rebase_path(files.ADVANCED_MSW_NATIVE_HDR, ".", "include")
+
+    # Some code expects all of windows.h to be available
+    configs -= [ "//build/config/win:lean_and_mean" ]
+  }
+
+  configs += [
+    ":internal",
+    ":pch",
+  ]
+
+  public_configs = [
+    ":libs",
+    ":wxwidgets_config",
+  ]
+
+  deps = [
+    ":setup",
+    "src/jpeg",
+    "src/png",
+    "src/regex",
+    "src/tiff",
+    "src/zlib",
+  ]
+}
+
+group("wxwidgets") {
+  public_deps = [
+    ":advanced",
+    ":base",
+    ":core",
+    ":setup",
+  ]
+
+  public_configs = [ ":wxwidgets_config" ]
+}

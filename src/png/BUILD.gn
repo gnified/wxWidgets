@@ -1,0 +1,33 @@
+config("png_config") {
+  include_dirs = [ "." ]
+}
+
+source_set("png") {
+  sources = [
+    "png.c",
+    "pngerror.c",
+    "pngget.c",
+    "pngmem.c",
+    "pngpread.c",
+    "pngread.c",
+    "pngrio.c",
+    "pngrtran.c",
+    "pngrutil.c",
+    "pngset.c",
+    "pngtrans.c",
+    "pngwio.c",
+    "pngwrite.c",
+    "pngwtran.c",
+    "pngwutil.c",
+  ]
+
+  public_configs = [
+    ":png_config",
+    "../..:wxwidgets_config",
+  ]
+
+  deps = [
+    "../..:setup",
+    "../zlib",
+  ]
+}
