@@ -1,11 +1,20 @@
 import("//build/config/precompiled_header.gni")
 
+declare_args() {
+  wxwidgets_universal = false
+  wxwidgets_shared = true
+}
+
 # copy setup file
 copy("copy_setup") {
   visibility = [ ":*" ]
-  if (is_win) {
+  if (is_win && !wxwidgets_universal) {
     sources = [
       "include/wx/msw/setup0.h",
+    ]
+  } else if (wxwidgets_universal) {
+    sources = [
+      "include/wx/univ/setup0.h",
     ]
   } else {
     assert(false, "Platform not supported")
@@ -31,9 +40,16 @@ group("setup") {
 config("wxwidgets_config") {
   visibility = [ ":*" ]
   include_dirs = [ "include" ]
+  defines = []
 
   if (!is_debug) {
-    defines = [ "wxDEBUG_LEVEL=0" ]
+    defines += [ "wxDEBUG_LEVEL=0" ]
+  }
+}
+
+config("wxwidgets_dllimp_config") {
+  if (wxwidgets_shared) {
+    defines = ["WXUSINGDLL"]
   }
 }
 
@@ -47,17 +63,21 @@ config("libs") {
 
   if (is_win) {
     libs = [
-      "gdi32.lib",
+      "kernel32.lib",
       "user32.lib",
-      "comctl32.lib",
+      "gdi32.lib",
       "comdlg32.lib",
-      "shell32.lib",
-      "ws2_32.lib",
-      "rpcrt4.lib",
       "winspool.lib",
+      "winmm.lib",
+      "shell32.lib",
+      "comctl32.lib",
       "ole32.lib",
       "oleaut32.lib",
-      "version.lib",
+      "uuid.lib",
+      "rpcrt4.lib",
+      "advapi32.lib",
+      "wsock32.lib",
+      "wininet.lib",
     ]
   }
 }
@@ -69,6 +89,39 @@ config("internal") {
 
   if (is_win) {
     defines += [ "__WXMSW__" ]
+  }
+
+  if (wxwidgets_universal) {
+    defines += ["__WXUNIVERSAL__"]
+  }
+}
+
+if (wxwidgets_shared) {
+  _wx_target_type = "shared_library"
+  set_defaults("wxlibrary") {
+    configs = default_shared_library_configs
+  }
+} else {
+  _wx_target_type = "static_library"
+  set_defaults("wxlibrary") {
+    configs = default_compiler_configs
+  }
+}
+
+template("wxlibrary") {
+  target(_wx_target_type, target_name) {
+    forward_variables_from(invoker, "*", [ "output_name" ])
+    if (wxwidgets_universal) {
+      output_name = "wxwidgets_univ_" + target_name
+    } else {
+      output_name = "wxwidgets_" + target_name
+    }
+
+    if (wxwidgets_shared) {
+      sources += [
+        "src/msw/version.rc",
+      ]
+    }
   }
 }
 
@@ -115,6 +168,10 @@ _sets_needed = [
   "ADVANCED_MSW_HDR",
   "ADVANCED_MSW_DESKTOP_HDR",
   "ADVANCED_MSW_NATIVE_HDR",
+
+  "UNIV_SRC",
+  "UNIV_HDR",
+  "UNIV_THEMES_SRC",
 ]
 
 _files_bkl = rebase_path("build/bakefiles/files.bkl", root_build_dir)
@@ -142,7 +199,7 @@ source_set("base_c") {
   ]
 }
 
-static_library("base") {
+wxlibrary("base") {
   sources = files.BASE_CMN_SRC  # BASE_SRC
   sources += files.BASE_AND_GUI_CMN_SRC  # BASE_AND_GUI_SRC
   public = rebase_path(files.BASE_CMN_HDR, ".", "include")
@@ -158,7 +215,11 @@ static_library("base") {
 
   sources -= [ "src/common/extended.c" ]
 
-  defines = [ "wxUSE_BASE=1" ]
+  defines = [ "wxUSE_BASE=1", "wxUSE_GUI=0" ]
+
+  if (wxwidgets_shared) {
+    defines += ["WXMAKINGDLL_BASE"]
+  }
 
   configs += [
     ":internal",
@@ -181,7 +242,7 @@ static_library("base") {
   ]
 }
 
-static_library("core") {
+wxlibrary("core") {
   sources = files.GUI_CMN_SRC  # BASE_SRC
   sources += files.BASE_AND_GUI_CMN_SRC  # BASE_AND_GUI_SRC
   public = rebase_path(files.GUI_CMN_HDR, ".", "include")
@@ -190,10 +251,21 @@ static_library("core") {
     # LOWLEVEL_SRC
     sources += files.MSW_LOWLEVEL_SRC
     sources += files.MSW_DESKTOP_LOWLEVEL_SRC
+    sources += files.BASE_AND_GUI_WIN32_SRC
 
     # GUI_SRC
-    sources += files.MSW_SRC
-    sources += files.MSW_DESKTOP_SRC
+    if (wxwidgets_universal) {
+      sources += files.UNIV_SRC
+      sources += [
+        "src/msw/evtloop.cpp",
+      ]
+      public += [
+        "include/wx/msw/evtloop.h",
+      ]
+    } else {
+      sources += files.MSW_SRC
+      sources += files.MSW_DESKTOP_SRC
+    }
 
     # LOWLEVEL_HDR
     public += rebase_path(files.MSW_LOWLEVEL_HDR, ".", "include")
@@ -209,41 +281,8 @@ static_library("core") {
 
   defines = [ "wxUSE_BASE=0" ]
 
-  configs += [
-    ":internal",
-    ":pch",
-  ]
-
-  public_configs = [
-    ":libs",
-    ":wxwidgets_config",
-  ]
-
-  deps = [
-    ":setup",
-    "src/jpeg",
-    "src/png",
-    "src/regex",
-    "src/tiff",
-    "src/zlib",
-  ]
-}
-
-static_library("advanced") {
-  sources = files.ADVANCED_CMN_SRC
-  public = rebase_path(files.ADVANCED_CMN_HDR, ".", "include")
-
-  if (is_win) {
-    sources += files.ADVANCED_MSW_SRC
-    sources += files.ADVANCED_MSW_DESKTOP_SRC
-    sources += files.ADVANCED_MSW_NATIVE_SRC
-
-    public += rebase_path(files.ADVANCED_MSW_HDR, ".", "include")
-    public += rebase_path(files.ADVANCED_MSW_DESKTOP_HDR, ".", "include")
-    public += rebase_path(files.ADVANCED_MSW_NATIVE_HDR, ".", "include")
-
-    # Some code expects all of windows.h to be available
-    configs -= [ "//build/config/win:lean_and_mean" ]
+  if (wxwidgets_shared) {
+    defines += ["WXUSINGDLL", "WXMAKINGDLL_CORE"]
   }
 
   configs += [
@@ -254,15 +293,66 @@ static_library("advanced") {
   public_configs = [
     ":libs",
     ":wxwidgets_config",
+    ":wxwidgets_dllimp_config",
   ]
 
   deps = [
     ":setup",
+    ":base",
     "src/jpeg",
     "src/png",
     "src/regex",
     "src/tiff",
     "src/zlib",
+  ]
+}
+
+wxlibrary("advanced") {
+  sources = files.ADVANCED_CMN_SRC
+  public = rebase_path(files.ADVANCED_CMN_HDR, ".", "include")
+
+  if (is_win) {
+    sources += files.ADVANCED_MSW_SRC
+    sources += files.ADVANCED_MSW_DESKTOP_SRC
+
+    if (wxwidgets_universal) {
+      sources += [
+        "src/generic/animateg.cpp",
+      ]
+      public += [
+        "wx/generic/animate.h",
+      ]
+    } else {
+      sources += files.ADVANCED_MSW_NATIVE_SRC
+      public += rebase_path(files.ADVANCED_MSW_NATIVE_HDR, ".", "include")
+    }
+
+    public += rebase_path(files.ADVANCED_MSW_HDR, ".", "include")
+    public += rebase_path(files.ADVANCED_MSW_DESKTOP_HDR, ".", "include")
+
+    # Some code expects all of windows.h to be available
+    configs -= [ "//build/config/win:lean_and_mean" ]
+  }
+
+  if (wxwidgets_shared) {
+    defines = ["WXUSINGDLL", "WXMAKINGDLL_ADV"]
+  }
+
+  configs += [
+    ":internal",
+    ":pch",
+  ]
+
+  public_configs = [
+    ":libs",
+    ":wxwidgets_config",
+    ":wxwidgets_dllimp_config",
+  ]
+
+  deps = [
+    ":setup",
+    ":core",
+    ":base",
   ]
 }
 
